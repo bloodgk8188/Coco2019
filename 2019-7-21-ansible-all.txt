@@ -1,0 +1,944 @@
+﻿Ansible：自动化运维工具
+	运维工具： 
+		自动化部署： PXE   cobbler    IAAS   
+		自动化运维：
+			命令  ansible   saltstack   
+			文件  ansible   puppet  func  
+            （运维层次）（软件开发层次）
+
+	运维工具的分类:
+		agent: puppet, func    带有客户端代理
+		agentless: ansible, fabric   无客户端代理 
+			ssh
+
+	ansible:
+		模块化，调用特定的模块，完成特定的任务；*****
+		基于Python语言实现，由Paramiko、PyYAML和Jinja2三个关键模块；
+		部署简单，agentless；只需要布置服务器端;客户端必须预装ssh和python  *****
+		主从模式
+		支持自定义模块
+		支持Playbook: 以文件形式自动化管理
+		幂等性：多次指定同一个操作，结果都是一致的  *****
+		
+        模块化、无客户端代理、幂等性
+        
+	ansible的软件可以去登录ansible官网去下载
+	也可以去epel源去下线
+	配置文件：
+			/etc/ansible/ansible.cfg
+	structure
+		inventory
+		modules
+		ad hoc commands
+		playbooks
+		playbook的核心元素：
+			tasks: 任务，即调用模块完成的某操作
+			variables: 变量
+			templates: 模板
+			handlers: 处理器，由某时间触发执行的操作
+			roles: 角色
+初始化安装： 
+	1.安装软件：  
+		先配置好yum源
+		#yum  install   ansible  
+		#yum  localinstall  ansible(全名)
+	2.查看都安装了哪些文件：  
+		#rpm  -ql   ansible  
+			/etc/ansible      配置文件的根目录  
+			/etc/ansible/ansible.cfg     主配置文件   
+			/etc/ansible/hosts          主机清单配置文件
+			/etc/ansible/roles          角色定义的目录
+			/usr/bin/ansible            远程控制命令  
+			/usr/bin/ansible-doc        获取模块信息
+			/usr/bin/ansible-playbook   运行剧本的命令
+	3.ansible命令的使用：  
+		ansible <host-pattern> [options]  [-f forks] [-m module_name] [-a args]
+	4.定义主机清单： 
+		4.1定义主机清单：  
+		#vim   /etc/ansible/hosts 
+			192.168.0.237
+			[web]
+			192.168.0.237
+			192.168.0.239
+
+			[allnodes]
+			192.168.0.236
+			192.168.0.237
+			192.168.0.239
+		注释： 定义了一个单独主机，叫作192.168.0.237;又定义了两个主机组，第一组中有两个主机：192.168.0.237 192.168.0.239 
+		
+		4.2验证： 
+			#ansible  主机组的名称   --list-hosts     
+			#ansible  web   --list-hosts    
+	5.ansible工作，多台主机间，必须要双机互信：  
+		#ssh-keygen  -t  rsa   
+		#ssh-copy-id  -i  /root/.ssh/id_rsa.pub   root@192.168.0.236
+		#ssh-copy-id  -i  /root/.ssh/id_rsa.pub   root@192.168.0.237
+		#ssh-copy-id  -i  /root/.ssh/id_rsa.pub   root@192.168.0.239
+		
+		每台主机都要做
+	
+	6.ansible命令的使用： 
+		#ansible  主机或主机组   -m  模块名   -a   参数   
+		#ansible   web   -m  ping       验证是否能ping通   
+	
+	7.查看都能使用哪些模块： 
+		#ansible-doc  -l       列出所有可用的模块  
+		#ansible-doc  -l    |  grep    user         查看用户模块  
+		
+	8.查看模块的功能，以及能使用的参数： 
+		#ansible-doc  模块名   
+		#ansible-doc   user     	
+	
+一.ansible命令使用：
+	ansible <host-pattern> [-f forks] [-m module_name] [-a args]
+	ansible命令   host-pattern:主机匹配（依靠/etc/ansible/hosts文件）-f：指定每次操作的主机数量 -m：所调用的模块　-a : 指定参数
+		args:
+			key=value
+
+			注意：command模块和shell模块，在执行时无须为key=value格式，而是直接给出要执行的命令即可；
+
+		常用模块：
+			command：如果不加指定，默认就使用该模块
+				-a 'COMMAND'	
+			例： 
+				#ansible  c7   -m  command   -a  "date"
+				#ansible  c7   -m  command   -a  "df  -h"
+				#ansible  c7   -m  command   -a  "who"
+				#ansible  c7   -m  command   -a  "uptime"
+				#ansible  c7   -m  command   -a  "ifconfig"
+				#ansible  c7   -m  command   -a  "ping -c 1 www.baidu.com "
+			user
+				-a 'name= state={present|absent} system= uid='
+				ansible db -m user -a 'name=centos state=present'
+				例：  
+				#ansible web  -m  user -a 'name=tom uid=3000  state=present'
+			group
+				-a 'name= gid= state= system='
+				例： 
+				#ansible web -m  group  -a  'name=group10  gid=5000 state=present'
+
+			cron
+				-a 'name= minute= hour= day= month= weekday= job= user= state='
+				例：  
+				#ansible  web  -m  cron  -a  'user=tom name="haha" hour=14 minute=*/2 job="echo haha" state=present'
+
+			copy
+				-a 'dest= src= mode= owner= group='
+				src：要复制到远程主机的文件在本地的地址。路径是一个目录，它将递归复制。如果路径使用"/"来结尾，则只复制目录里的内容，如果没有使用"/"来结尾，则包含目录在内的整个内容全部复制。
+				dest：指定保存文件路径(必须指定)
+				mode：拷贝到远程主机上的文件权限
+				backup：在覆盖之前将原文件备份，备份文件包含时间信息。有两个选项：yes|no
+				
+				例：   
+				#ansible    web  -m  copy  -a  'content="welcome loring"  dest=/tmp/jerry.txt'
+				
+				#ansible    web  -m  copy  -a  "src=/ansible/tom.txt  dest=/tmp/jerry.txt"
+				
+				#ansible    web  -m  copy  -a  "src=/ansible/tom.txt  dest=/tmp/jerry.txt mode=0600 owner=tom"
+
+			file
+				-a 'path= mode= owner= group= state={directory|link|present|absent} src='
+				path：必选项，定义文件/目录的路径
+				owner：定义文件/目录的属主
+				group：定义文件/目录的属组 
+				mode：定义文件/目录的权限
+				recurse：递归的设置文件的属性，只对目录有效
+				force：需要在两种情况下强制创建软链接，一种是源文件不存在但之后会建立的情况下；另一种是目标软链接已存在,需要先取消之前的软链，然后创建新的软链，有两个选项：yes|no
+				src：要被链接的源文件的路径，只应用于state=link的情况
+				dest：被链接到的路径，只应用于state=link的情况 
+				state=  
+					directory：如果目录不存在，创建目录
+					file：即使文件不存在，也不会被创建
+					link：创建软链接
+					hard：创建硬链接
+					touch：文件不存在，则会创建一个新的文件；文件或目录已存在，则更新其最后修改时间
+					absent：删除目录、文件或者取消链接文件
+			例： 
+				#ansible c7  -m file -a "path=/tmp/fstab.symlink state=touch  force=yes"
+				#ansible c7  -m file -a "path=/home/loring9 state=directory owner=root group=root"
+				#ansible c7  -m file -a "path=/home/loring9/test.sh state=touch mode=0755"
+				#ansible c7  -m file -a "src=/home/loring9/test.sh dest=/tmp/test.sh state=link"
+				#ansible c7  -m file -a "path=/tmp/test.sh state=absent"
+				#ansible  web  -m  file  -a  "path=/tmp/haha.txt owner=tom state=touch"
+			ping
+				没有参数
+				ansible all -m ping 
+			例： 
+				#ansible c7  -m  ping  
+
+			mount: 模块   
+				#ansible  web  -m mount  -a  'path=/mnt  src=/dev/sr0  fstype=iso9660 opts=ro  state=mounted'
+				
+				
+			yum
+				
+				-a 参数:
+				config_file：yum的配置文件
+				disable_gpg_check：关闭gpg_check
+				disablerepo：不启用某个源
+				enablerepo：启用某个源
+				name：安装程序名(必须指定)，也可以传递一个url或者一个本地的rpm包的路径 
+				state：状态(present-安装;latest-安装最新版;absent-卸载)
+			例：
+				#ansible c7 -m yum -a "name=ntpdate state=latest"
+				#ansible c7 -m yum -a 'name=wget state=absent'
+				#ansible c7 -m yum -a 'name="@Development tools" state=present'
+				#ansible c7 -m yum -a 'name=nginx state=latest'
+
+			service
+				-a 'name= state={started|stopped|restarted} enabled='
+				ansible all -m service -a 'name=httpd state=started enabled=yes'
+
+			shell  和command模块类似，但是shell模块支持管道
+				-a 'COMMAND'
+				ansible db -m shell -a 'echo centos | passwd --stdin centos'
+
+			script
+				-a '/path/to/script'
+				脚本的路径是在管理主机上
+
+			setup  可以获取被管理主机的变量
+				ansible all -m setup 
+			例： 
+			查看cpu信息：
+				#ansible  c7 -m setup -a 'filter=*_processor
+			收集信息到指定目录：
+				#ansible  c7 -m setup --tree /tmp/ansible_host_message/
+二.YAML语言简介：				
+对于 Ansible, 每一个 YAML 文件都是从一个列表开始. 列表中的每一项都是一个键值对, 通常它们被称为一个 “哈希” 或 “字典”. 所以, 我们需要知道如何在 YAML 中编写列表和字典。
+YAML 还有一个小的怪癖. 所有的 YAML 文件(无论和 Ansible 有没有关系)开始行都应该是 ---. 这是 YAML 格式的一部分, 表明一个文件的开始。列表中的所有成员都开始于相同的缩进级别, 并且使用一个 “- ” 作为开头(一个横杠和一个空格):
+	例：
+		---
+		# 一个美味水果的列表
+		- Apple
+		- Orange
+		- Strawberry
+		- Mango
+		
+		['apple','orange','strawberry','mango']
+	字典：一个字典是由一个简单的 键: 值 的形式组成(这个冒号后面必须是一个空格)：
+		---
+		# 一位职工的记录
+		name: Example Developer
+		job: Developer
+		skill: Elite1
+	字典也可以使用缩进形式来表示, 如果你喜欢这样的话：
+		---
+		# 一位职工的记录
+		{name: Example Developer, job: Developer, skill: Elite}
+		
+		name: 
+		  firstname: Example
+		  lastname: Developer
+		  
+		字典的嵌套：  
+			{name: {firstname: example, lastname: developer}}
+		
+	Ansible并不是太多的使用这种格式, 但是你可以通过以下格式来指定一个布尔值(true/fase):
+		---
+		create_key: yes
+		needs_agent: no
+		knows_oop: True
+		likes_emacs: TRUE
+		uses_cvs: false1
+	组合：
+		---
+		# 一位职工记录
+		- name: Example Developer
+		  job: Developer		
+		  skill: Elite
+		  employed: True
+		  foods:
+			- Apple
+			- Orange
+			- Strawberry
+			- Mango
+		  languages:
+			ruby: Elite
+			python: Elite
+			dotnet: Lame1	
+		
+	变量引用：
+		Ansible 使用 “{{ var }}” 来引用变量. 如果一个值以 “{” 开头, YAML 将认为它是一个字典, 所以我们必须引用它, 像这样:
+			例：foo: "{{ variable }}"
+三.Ansible Playbook 介绍
+	可以理解为把需要用到的 ansible 模块写入到配置文件里面，然后执行配置文件就可以完成分复杂的工作。类比在 Linux 系统下的 shell 脚本，比如 shell 安装 LANMP。
+（一）编写playbook：
+	例1：
+		# vim /etc/ansible/test.yml
+		---
+		- hosts: testhosts
+		  remote_user: root
+		  tasks:
+				- name: test_playbook
+				  shell: touch /tmp/loring.txt
+ 
+		注意：playbook的文件要以.yml 结尾
+			  --- 为固定格式，不能省略，包括 host 前面的 -
+ 
+			hosts     指定主机的组或者ip
+			remote_user 指定远程执行命令的用户，也可以只写 user
+			tasks      指定任务，先对任务进行命名，再写要执行的命令
+				 name  对任务进行一个描述，执行过程中会打印出来
+				 shell 具体要执行的命令。
+		注意：格式要求很严格，hosts 和 remote_user 一定要首字母对其，下面的 name 和 shell 也要整齐，减号是对下面所有的参数起作用，如果没有整齐，那么语法会有错误。
+		
+		
+		测试运行： 
+			#ansible-playbook   test.yml   -C/--check   
+		语法校验： 
+			#ansible-playbook  test.yml   --syntax-check   
+		运行 playbook：
+			#ansible-playbook test.yml
+	例2：
+		# vim /etc/ansible/creat_users.yml
+		---
+		- name: create_user
+		  hosts: testhosts
+		  user: root
+		  gather_facts: false
+		  vars:
+			   - user: "test"
+		  tasks:
+			   - name: creat user
+				 user: name="{{ user }}"
+	
+		注释：
+			1.gater_facts     参数指定了在以下任务部分执行前，是否先执行setup模块获取主机相关信息，ansible testhosts -m setup 在命令行执行 setup 模块可查看相关信息。这些信息可以作为一个判断条件，在后面的task会使用到setup获取的信息。比如判断系统是 ubuntu 还是 centos，然后选择是执行 apt-get 还是 yum。
+ 
+			2.var     指定变量，定义 user 用户变量，值为test ，需要注意的是，变量值一定要用引号引住。在 playbook 里面用两个花括号来引用变量，需要有空格 {{ 变量 }}。
+ 
+			3.tasks     指定任务，
+ 
+			4.- name 定义任务的描述，
+ 
+			5.user 调用 user 模块
+			
+			
+	实验：  
+		在远端主机，安装一个httpd软件，并写一个页面，hello  form  main-node，可以使用客户端进行访问，而且该服务会下次开机自启动
+			1.挂载光盘   *
+			2.安装软件   *
+			3.修改配置文件  * 
+			4.添加页面  *
+			5.启动服务、开机自启  *
+			6.将远端主机的selinux改为permissive
+		扩展：
+		lineinfile模块的使用  
+			#vim   chselinux.yml  
+				---
+				- name: change selinux
+				  hosts: web
+				  tasks:
+					- name: change
+					  lineinfile:
+						path: /etc/selinux/config
+						regexp: '^SELINUX='
+						line: 'SELINUX=enforcing'
+			
+		archive模块的使用：
+			将/usr/local下所有的文件，都归到/root/backup.tar.gz
+			#vim  archive.yml  
+				---
+				- name: create  a  tarball
+				  hosts: web
+				  tasks:
+					- name: user tar to make a tarball
+					  archive:
+						path: /usr/local
+						dest: /root/backup.tar.gz
+						format: gz
+	
+	在剧本中，编写多个play：  
+		#vim   /etc/ansible/hosts   
+			[web]
+			192.168.0.237 
+			
+			[web1]
+			192.168.0.236
+			192.168.0.237
+		#vim   allnodes.yml  
+			---
+			- name: make a task for node1
+			  hosts:  web
+			  tasks:
+				- name: create a file
+				  file:
+					path: /root/web.txt
+					state: touch
+
+			- name: create a task for node2
+			  hosts: web1
+			  tasks:
+				- name: create a directory
+				  file:
+					path:  /root/abcdef
+					state: directory			
+		
+	
+（三）playbook 中的循环
+	playbook 类似 shell ，支持循环以及判断等特殊格式。需求针对 file 文件，修改 /tmp 目录下 1.txt 2.txt 的权限，owner 以及 group。做个遍历循环，核心是 item 以及下面的 with_item 选项，为 ansible 的固定结构。
+	例1：
+		# vim /etc/ansible/loop.yml
+		---
+		- hosts: testhosts
+		  user: root
+		  tasks:
+			- name: change mod for file
+			  file: path=/tmp/{{ item.name }} mode=600 owner=test group=root
+			  with_items:
+				- {name: loring,age: 35}
+				- {name: tom,age: 30}
+				
+		 
+		注意： 
+			file 后面的 user 和 group 可以不用写，上面已经定义了 user
+			with_item下面的1.txt和2.txt后面千万不能跟空格，空格也会被识别为文件的一部分。
+			其中核心部分就是 {{ item }} 以及下面的 with_items:
+ (四).playbook中的条件语句： 
+		#vim    block.yml 
+			---
+			- name: test block
+			  hosts: web
+			  tasks:
+				- block:
+					- name: copy a file
+					  copy:
+						src:  /tmp/a.txt
+						dest: /tmp/hello.txt
+				  rescue:
+					- name: restart httpd
+					  service:
+						name: httpd
+						state: restarted
+				  always:
+					- name: restartt  nfs
+					  service:
+						name: nfs
+						state: started
+			注意：如果block下的模块，能运行成功，则不再运行rescue下的模块；如果block下模块没有运行成功，则运行rescue下的模块；但是always下模块，永远都会运行
+			  
+（五）playbook 中的判断
+	playbook 类似 shell ，支持循环以及判断等特殊格式。判断的关键选项 when。
+	例1：
+		# vim /etc/ansible/when.yml		 
+		---
+		- hosts: testhosts
+		  remote_user: root
+		  gather_facts: True
+		  tasks:
+			- name: use when
+			  shell: touch /tmp/when.txt
+			  
+	例2：  
+		#vim   register.yml   
+			---
+			- name: test register for httpd
+			  hosts: web
+			  tasks:
+				- name: install httpd
+				  yum:
+					name: httpd
+					state: installed
+				  register:  result
+				- name: copy a file for httpd
+				  lineinfile:
+					path: /var/www/html/index.html
+					line: "haha to douniwan"
+					create: yes
+				  when: result.rc  == 0
+				  
+			注意：这是当yum模块执行成功了，才能运行lineinfile模块 
+
+		注释：gather_facts  这里用到的信息是来判断 ip 地址是不是 192.168.0.240
+			  when 就是执行条件，facter_ipaddress 就是通过 gather_facts 得到的信息，ansible testhosts -m setup 命令行执行可查看信息。facter_ipaddress 已经不再支持，需要更改为 ansible_eth0.ipv4.address 
+		changed_when的使用： 
+			#vim   handler1.yml  
+				---
+				- name: test handlers
+				  hosts: web
+				  tasks:
+					- name: copy a file to nfs
+					  user:
+						name: tom3333
+						state: present
+					  changed_when: true
+					  notify: loring
+				  handlers:
+					- name: loring
+					  service:
+						name: nfs
+						state: restarted
+			注释：changed_when:  true  代表将状态值，强制改为chaged=1；changed_when: false 代表强制将状态值，改为changed=0
+				   failed_when: 使用方法同changed_when
+			 
+ （六）playbook的特性handlers 
+	handlers的目的是在执行完成tasks之后，还需要进行其他的操作时，使用 handlers。但是这里需要保证只有在 tasks 执行成功之后，handlers 才会生效。这种比较适合配置文件发生更改后，自动重启服务的操作。
+	例1：
+		# vim /etc/ansible/handlers.yml
+		---
+		- hosts: testhosts
+		  remote_user: root
+		  tasks:
+			- name: test copy
+			  copy: src=/tmp/1.txt dest=/tmp/2.txt
+			  notify: test handlers
+		  handlers:
+			- name: test handlers
+			  shell: echo "121212" >> /tmp/2.txt
+	例2.  
+		#cp  /etc/httpd/conf/httpd.conf   /etc/ansible/template/httpd.conf.j2  
+		#vim    yumhttp.yml
+		---
+		- hosts: c7
+		remote_user: root
+		tasks:
+			- name: yum  install  httpd  
+			  yum: name=httpd  state=latest
+			- name: copy  configurition file
+			  template: src=/etc/httpd/template/httpd.conf.j2  dest=/etc/httpd/conf/httpd.conf
+			  notify: hello httpd
+			- name: start httpd
+			  service:  name=httpd  state=started
+		handlers:
+			- name: hello httpd
+			  service: name=httpd state=restarted
+		例3：  
+			---
+			- name: test handlers
+			  hosts: web
+			  tasks:
+				- name: copy a file to nfs
+				  copy:
+					content: "/loring 192.168.0.0/24(rw)"
+					dest: /etc/exports
+				  notify: loring
+			  handlers:
+				- name: loring
+				  service:
+					name: nfs
+					state: restarted
+		注释：
+			1.关键点在于 notify，在 copy 成功之后，执行 handlers，notify 后面的名字，对应的是 handlers 选项中的 - name 选项，如果没有写 
+			
+			2.如果没有变化模块下的notify，就不会执行 handlers 里面的命令。
+			NOTE： copy 有个特性，和 rsync 类似，如果拷贝的两个文件内容一模一样，那就就不会进行拷贝的操作，在这个 handlers 的文件中，也就不会去执行 handlers 的操作。
+			3.在一个play中，只能含有一个handler；handlers是在所有的模块都执行结束，才去运行handlers
+				例如： 以下的逻辑就是错误的
+					#vim   dhcp.yml  
+						---
+						- name: dhcp test
+						  hosts: web
+						  tasks:
+							- yum:
+								name: dhcp
+								state: installed
+							  notify: loring
+							- service:
+								name: dhcpd
+								state: restarted
+						  handlers:
+							- name: loring
+							  lineinfile:
+								path: /etc/dhcpd/dhcpd.conf
+								line: |
+								  subnet 192.168.0.0 netmask 255.255.255.0 {
+								  range  192.168.0.100  192.168.0.120;
+								  }
+					#ansible-playbook  dhpc.yml       
+					注意： 执行就会报错，因为Lineinfile的模块，是最后运行的
+（七）tags使用： tag--> 标签  
+		#vim  tag.yml  
+			---
+			- name: test  tags
+			  hosts: web
+			  tasks:
+				- name: add a  user
+				  user:
+					name: tom2222
+					state: present
+				  tags: auser
+				- name: add a group
+				  group:
+					name: group3333
+					state: present
+				  tags: agroup
+		#ansible-playbook     tag.yml    --tags="auser"
+		#ansible-playbook     tag.yml    --tags="agroup"
+		#ansible-playbook     tag.yml    --tags="agroup"   --tags="auser"
+ （扩展）：template模板的使用：  jinja2模板，模板文件名，必须以j2结尾  
+		#vim     /root/dhcp.j2  
+			subnet  {{ rangeip }}.0  netmask 255.255.255.0 {
+			 range  {{ rangeip }}.100  {{ rangeip }}.130;
+			 }
+		#vim   dhcp1.yml  
+			---
+			- name: summery a dhcp platform
+			  hosts: web  
+			  vars: 
+			    - rangip: 192.168.0
+			  tasks: 
+			    - name: copy use a   template  
+				  template:  
+				    src:  /root/dhcp.j2
+					dest:  /etc/dhcpd/dhcpd.conf   
+（八）Ansible playbook中变量的定义与引用：
+	注意： 变量有三种类型
+		1.全局： 使用命令行给给定的变量;或者通过在playbook中靠vars_files定义的变量
+		2.在剧本中的变量：playbook中 
+		3.在主机清单中的变量： inventory里的变量  
+		优先级：  1  >  2  >  3  
+	例1：
+		#vim   /etc/ansible/test.yml
+		---
+		- hosts: test
+		  remote_user: root
+		  tasks:
+			  - name: debug
+				debug: msg="The {{ inventory_hostname }} Value is {{ keyvalue }}"
+	变量定义：	
+		1.在Inventory文件中定义变量:inventory叫清单，就是主机列表
+			将变量定义在inventory文件(默认为etc/ansible/hosts文件)中，如下定义一个名为keyvalue的变量：
+			# 针对单个主机定义变量
+				[test]
+				192.168.0.240  keyvalue=centos
+			# 组定义变量
+				[test:vars]
+				keyvalue=vmware centos71
+
+			如上所示，有针对单个主机定义变量和组定义变量两种方式。 
+			1）组定义变量的作用范围是组下的所有主机 
+			2）当两种定义方式同时存在时，ansible会优先采用单个主机定义的变量值
+			
+			例：  
+				#vim  /etc/ansible/hosts   
+					[web]
+					192.168.0.237     pack1=httpd   
+				#vim   /etc/ansible/playbook/httpd2.yml  
+					---
+					- name: install httpd
+					  hosts: web
+					  tasks:
+						- name: hello httpd
+						  yum:
+							name: "{{ pack1 }}"
+							state: installed
+
+		2.通过host_vars和group_vars目录来定义变量
+			/etc/ansible/目录是linux系统上ansible默认的配置文件目录，在该目录下创建host_vars和group_vars两个目录用来存放定义变量的文件。如： 
+			例1：针对单个主机的变量
+				#vim   host_vars/node1  
+				---
+				pack3:  httpd  
+			例2：针对test组的变量
+
+				#vim  group_vars/allnodes 
+				---
+				pack4:  dhcp  
+
+				
+			或者： 建议使用该方式
+				#vim   /etc/ansible/hosts   
+					[web1]
+					192.168.0.236
+					192.168.0.237
+					[web1:vars]
+					pack2=samba  
+				#vim   /etc/ansible/playbook/samba.yml  
+					---
+					- name: install samba
+					  hosts: web1
+					  tasks:
+						- name: hello samba
+						  yum:
+							name: "{{ pack2 }}"
+							state: installed
+			同样，单个主机定义的变量优先级高于组定义的变量。ansible使用变量的优先级顺序从高到低为： 
+				host_vars下定义变量 
+				inventory中单个主机定义变量 
+				group_vars下定义变量 
+				inventory中组定义变量
+		
+		3.通过ansible-playbook命令行传入
+			在执行playbook命令时，通过-e选项传入参数：
+			ansible-playbook test.yml -e "keyvalue=inputed"
+			此外，ansible-playbook还支持yaml和json文件的方式传入变量：
+			#vim  vars.yml
+				---
+				keyvalue: vars@yaml
+			#vim   vars.json  
+				cat vars.json
+				{"keyvalue": "vars@json"}
+ 
+			这种方式传入的变量，比1和2中介绍的变量定义的优先级都要高。
+		
+		4.在playbook的yaml文件中使用vars字段定义
+		例： 
+			#vim test.yml
+			---
+			- hosts: test
+			  remote_user: root
+			  vars:
+				  keyvalue: vars in playbook
+			  tasks:
+				  - name: debug
+					debug: msg="The {{ inventory_hostname }} Value is {{ keyvalue }}"
+					
+		例2：  
+			#vim   user.yml   
+				---
+				- name: first yaml
+				  hosts: web
+				  vars:
+					- user1: tom999
+					- group1: group888
+				  tasks:
+					- name: add user
+					  user:
+						name: "{{ user1 }}"
+						state: present
+					- name: add group   
+					  group:
+						name: "{{ group1 }}"
+						state: present
+			例3： 使用with_items循环语句：  
+				#vim  user1.yml   
+					---
+					- name: create multi users
+					  hosts: web
+					  tasks:
+						- name: create user
+						  user:
+							name:  "{{ item }}"
+						  with_items:
+							- tom666
+							- tom777
+		5.在playbook的yaml文件中使用vars_files字段定义
+			可以去调用.json或者.yml的文件来去传递变量，类似-e  "@XXX.json"
+		例： 
+			#vim   var.yml  
+			    ---
+				pack1: dhcp  
+			#vim test.yml
+			---
+			- hosts: test
+			  remote_user: root
+			  vars: 
+			    - pack1: zsh  
+			  vars_files:
+				  - vars.yml
+			  tasks:
+				  - name: install packages 
+					yum:  
+					  name:  "{{ pack1 }}"
+					  state:  installed  
+			发现引用文件中的变量，而不是剧本给定的；vars_files的级别大于playbook中的定义，同命令行级别
+			通过vars_files字段，直接在playbook中引入定义变量的文件，支持yaml和json两种文件格式的定义变量。高于1和2方法，低于3方法
+		6.使用register传递变量
+			register方式用于在task之间传递变量。
+		例： 
+			#vim  register.yml
+			---
+			- hosts: test
+			  remote_user: root
+			  tasks:
+				  - name: register test
+					shell: hostname
+					register: info
+				  - name: display info
+					debug: msg="Hostname is {{ info }}"
+
+			register定义的info变量在第二个task中用来查看前一个task中执行的hostname命令的结果。可以看到playbook运行后的结果中，info返回的是一段python字典数据，如果只想看到stdout部分的信息的话，可以通过info[‘stdout’]来引用。
+
+				#vim   register.yml
+				---
+				- hosts: test
+				  remote_user: root
+				  tasks:
+					  - name: register test
+						shell: hostname
+						register: info
+					  - name: display info
+						debug: msg="Hostname is {{ info['stdout'] }}"
+
+		7.使用vars_prompt交互式传入变量
+			在playbook中定义vars_prompt的变量名和交互式提示信息，就可以实现在运行playbook时，通过交互的传入变量值。
+		例： 
+			#vim  prompt.yml
+			---
+			- hosts: test
+			  remote_user: root
+			  vars_prompt:
+				  - name: "var1"
+					prompt: "input value for var1"
+					private: no
+				  - name: "var2"
+					prompt: "input value for var2"
+					private: yes
+					default: 'test var2'
+			  tasks:
+				  - name: display var1
+					debug: msg="The value of var1 is {{ var1 }}"
+				  - name: display var2
+					debug: msg="The value of var2 is {{ var2 }}"
+
+			注意：private字段用来定义交互时是否回显输入的值，默认private为yes；default用来定义变量的默认值。
+		
+		8.使用facts变量：  setup模块可以读取facts变量  
+			#vim   fact.yml  
+				---
+				- name: copy a file to node1
+				  hosts: web
+				  tasks:
+					- name: copy hostname to node1
+					  copy:
+						content: "hello loring {{ ansible_fqdn }}\n"
+						dest:  /root/hostname.txt
+					- name: copy hostname to node1
+					  copy:
+						content: "{{ ansible_cmdline['LANG'] }}\n"
+						dest:  /root/comline.txt	
+						
+				注意： ansible_cmdline['LANG']还可以写成--> ansible_cmdline.LANG
+			手动获取facts变量：  
+				#anible  web    -m  setup       
+				能获取web主机组中，每个主机的facts变量
+			在剧本中，关闭fact变量：
+				#vim    test.yml  
+					---
+					- name: test haha  
+					  hosts:  web  
+					  gather_facts: false  
+					  tasks:  
+						- user:
+						    name: tom000  
+							state: present  
+				#ansible-playbookk   test.yml        发现没有了gathering facts的任务了
+							
+			
+（九）实例：
+	例1： 创建用户，拷贝文件
+		- hosts: websrvs
+          remote_user: root
+          tasks:
+          - name: create nginx group
+            group: name=nginx system=yes gid=220
+          - name: create nginx user
+            user: name=nginx uid=220 group=nginx system=yes
+
+         - hosts: dbsrvs
+           remote_user: root
+           tasks:
+           - name: copy file to dbsrvs
+             copy: src=/etc/inittab dest=/tmp/inittab.ans
+
+
+	"ansible_distribution_major_version": "7", 
+
+	nginx.conf
+		worker_processes {{ ansible_processor_cores * ansible_processor_count - 1 }};
+	例2：实战：用ansible playbook完成配置httpd的集群；
+		#vim test.yml 
+		- hosts: web
+		  remote_user: root
+		  vars:
+		  - package: httpd
+		  - service: httpd
+		  tasks:
+		  - name: install  httpd
+			yum: name={{ package}} state=latest
+		  - name: install configration file
+			copy: src=/root/conf/httpd.conf dest=/etc/httpd/conf/httpd.conf
+			notify: 
+			- hello123
+		- name: start httpd service
+		  service: enabled=true name=httpd state=started
+		  handlers:
+		  - name: hello123
+			service: name=httpd state=restarted
+	    实现keepalived自动化部署
+		例3：将IP地址复制到文件
+		#vim test1.yml
+		- hosts: web
+		  remote_user: root
+		  tasks:
+		  - name: copy file
+			copy: content="{{ ansile_all_ipv4_addresses }}" dest=/tmp/vars.ans
+十.Ansible角色定义： 
+	#mkdir -p  /etc/ansible/roles/webapp/{files,handlers,meta,tasks,templates,vars}
+	1.创建role的步骤
+		(1) 创建以roles命名的目录；
+		(2) 在roles目录中分别创建以各角色名称命名的目录，如webservers等；
+		(3) 在每个角色命名的目录中分别创建files、handlers、meta、tasks、templates和vars目录；用不到的目录可以创建为空目录，也可以不创建；
+		(4) 在playbook文件中，调用各角色；
+	2.role内各目录中可用的文件
+		tasks目录：至少应该包含一个名为main.yml的文件，其定义了此角色的任务列表；此文件可以使用include包含其它的位于此目录中的task文件；
+		
+		files目录：存放由copy或script等模块调用的文件；
+		
+		templates目录：template模块会自动在此目录中寻找Jinja2模板文件；
+		handlers目录：此目录中应当包含一个main.yml文件，用于定义此角色用到的各handler；在handler中使用include包含的其它的handler文件也应该位于此目录中；
+		
+		vars目录：应当包含一个main.yml文件，用于定义此角色用到的变量；
+		
+		meta目录：应当包含一个main.yml文件，用于定义此角色的特殊设定及其依赖关系；
+		
+		default目录：为当前角色设定默认变量时使用此目录；应当包含一个main.yml文件
+		
+		
+		例： 
+			#vim   test.yml   
+				---
+				- hosts: c6
+				  remote_user: root
+				  roles:
+					  - webapp
+			#mkdir -p  /etc/ansible/roles/webapp/{files,handlers,meta,tasks,templates,vars}
+			在handlers  tasks  vars 中添加main.yml文件，在里面设定内容
+			#vim   tasks/main.yml  
+				- name: touch file
+				  file: path=/tmp/{{ aaa }} state=directory
+				  notify: loring
+
+			#vim    handlers/main.yml 
+				---
+				- name:  loring 
+				  service:  name=httpd  state=restart  
+			
+			#vim    vars/main.yml   
+				---
+				aaa: lisi
+			
+			#ansible-playbook  test.yml    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
