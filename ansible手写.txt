@@ -1,0 +1,155 @@
+安装：  
+    1.保证所有主机时间同步：  ntp服务
+          
+    2.能够双机互信： 
+        #ssh-keygen  -t  rsa  
+        #ssh-copy-id  -i  /root/.ssh/id_rsa.pub    root@192.168.0.248(所有节点)
+        
+    3.安装：  ansible软件默认光盘中没有
+        #unzip   ansible.zip  
+        #cd  解压目录  
+        
+        #yum  localinstall  -y  *.rpm  
+    
+    4.安装软件都安装了哪些文件： 
+        #rpm   -ql    ansible  
+            /etc/ansible/ansible.cfg    默认的主配置文件 
+            /etc/ansible/hosts          默认的主机清单文件(定义被管理主机ip) 
+            /etc/ansible/roles          默认的角色文件根目录
+            /usr/bin/ansible            ansible的命令；指定ansible hoc command 
+            /usr/bin/ansible-doc        获取模块帮助信息命令
+            /usr/bin/ansible-playbook   执行ansible playbook的命令
+            /usr/bin/ansible-vault      ansible文件加密的命令
+            
+    5.配置文件简单管理： 现在无需修改
+        #vim   /etc/ansible/ansible.cfg   
+            [defaults]
+            inventory      = /etc/ansible/hosts   指定清单文件
+            
+    6.配置清单文件： 
+        #vim     /etc/ansible/hosts  
+            [node1]
+            192.168.0.247 
+            
+            [node2]
+            192.168.0.248
+            
+            [allnodes]
+            192.168.0.247
+            192.168.0.248
+            
+        #ansible   主机[主机组]    --list-hosts  
+            列出主机组中，所有的主机清单
+            
+        #ansible   allnodes   --list-hosts      
+            hosts (2):
+                192.168.0.247
+                192.168.0.248    如果看见对应的主机，意味着清单文件生效
+            
+    7.模块帮助： *****
+    
+        查看安装了哪些模块： 
+            #ansible-doc  -l     
+
+            #ansible-doc  -l   |  wc  -l     查看多少个模块    
+                1378
+                
+            #ansible-doc  -l  |  grep  "user"    
+          
+        查看模块帮助文档：  
+            #ansible-doc   模块名 
+            
+            #ansible-doc   user      获取user模块的帮助文档
+            
+    8.常见模块： 
+        运行ansible hoc命令：
+            # ansible  主机[主机组]   -m   模块    [-a  "参数"]
+    
+        8.1 ping模块：  验证跟被管理主机的连通性
+            
+            #ansible   node2    -m  ping   
+                192.168.0.248 | SUCCESS => {
+                    "changed": false, 
+                    "ping": "pong"    默认能通信，返回值为pong 
+                }
+                
+            #ansible    node2  -m  ping   -a  "data='haha'"     
+                192.168.0.248 | SUCCESS => {
+                    "changed": false, 
+                    "ping": "haha"    返回值是通过data=haha实现的自定义
+                }
+            
+        8.2 user模块：  管理用户 
+            
+            # ansible  node2   -m  user    -a  'name=tom88  uid=4000 state=present'
+            
+            # ansible  node2   -m  user    -a  'name=tom88 move_home=yes state=absent'
+            
+            注释：  present--> 已存在的    absent-->不存在的 
+            
+            #ansible   node2   -m   user   -a  'name=tom99 uid=5000  home="/home/testom" shell="/sbin/nologin" comment="test first user" state=present'
+            注意：引号一定不能交叉
+            
+        8.3 group模块：  管理组  
+            
+            #ansible   node2  -m  group    -a  'name=group100  gid=6000  state=present'
+            
+            #ansible  node2  -m   group   -a  'name=group100  state=absent'
+            
+        8.4 file模块： 文件管理
+            创建目录： 
+                #ansible  node2  -m  file  -a  'path=/loring  owner=tom88  mode=775  state=directory'
+           
+            创建普通文件： 
+                #ansible   node2  -m  file  -a  'path=/loring/a.txt state=touch'
+                
+            创建链接文件： 
+                #ansible  node2   -m  file  -a   'path=/loring/b.txt src=/etc/passwd  state=link'
+         
+        8.5 cron模块：  计划任务
+           
+            #ansible  node2  -m  cron  -a  'hour=14  minute=23  job="echo linux" name= "the first test" state=present'
+            
+        8.6 copy模块：  拷贝文件 
+            #ansible  node2 -m  copy   -a  'src=/etc/passwd  dest=/loring/aaa.txt'
+            
+            #ansible  node2  -m  copy  -a  'content="hello from ansible\n"  dest=/loring/bbb.txt'
+            
+            #ansible  node2  -m  copy  -a  'content="[local]\nname=local\nbaseurl=file:///mnt\nenabled=1\ngpgcheck=0\n"  dest=/loring/local.repo'
+            以上可以生成Yum源文件
+            
+        8.7 mount模块：  挂载  
+        
+            #ansible  node2  -m  mount  -a  'path=/mnt  src=/dev/sr0  fstype=iso9660 opts=ro  state=mounted'
+            
+            
+        8.8 yum模块：  安装软件 
+            
+            #ansible  node2  -m   yum  -a  'name=vsftpd  state=installed'
+            
+        8.9 service模块：  管理服务
+            
+            #ansible   node2  -m  service    -a  'name=vsftpd  state=started'
+            
+        9.0 实验： 部署vsftpd服务
+            #vim   vsftpd.sh  
+                #建立挂载点
+                ansible  node2  -m   file  -a  "path=/loringrepo state=directory"  
+
+                #创建yum源配置文件
+                ansible  node2  -m  copy  -a   'content="[local]\nname=local\nbaseurl=file:///loringrepo\nenabled=1\ngpgcheck=0\n" dest=/etc/yum.repos.d/local.repo'
+                
+                #挂载光盘
+                ansible  node2  -m   mount  -a  'path=/loringrepo src=/dev/sr0 fstype=iso9660  opts=ro state=mounted'
+                
+                #安装软件
+                ansible  node2  -m  yum   -a  'name=vsftpd  state=installed'
+
+                #启动软件
+                ansible  node2  -m  service   -a  'name=vsftpd  state=started'  
+            
+            
+            
+            
+            
+            
